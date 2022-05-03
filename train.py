@@ -1,0 +1,222 @@
+import numpy as np
+import os
+from pathlib import Path
+from hydra import utils
+import argparse
+import collections
+from parse_config import ConfigParser
+from tqdm import tqdm
+import matplotlib.pyplot as plt 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+
+from model import Encoder, Decoder, PitchClassifier, PitchAE
+from data_utils import ContinuumDateset
+from torch.utils.data import DataLoader
+from utils import cal_acc, grad_clip, calculate_gradients_penalty
+
+
+def load_data(data_dir, batch_size):
+    data_set = ContinuumDateset(f"{data_dir}/mel", f"{data_dir}/f0")
+    data_loader = DataLoader(dataset=data_set, batch_size=batch_size, shuffle=True)
+    return data_loader
+
+
+def load_model(device):
+    pitch_ae = PitchAE().to(device)
+    encoder = Encoder().to(device)
+    decoder = Decoder().to(device)
+    classifier = PitchClassifier().to(device)
+    return pitch_ae, encoder, decoder, classifier
+
+
+def main(config):
+    logger = config.get_logger('train')
+    # Hyper-parameters
+    exp_name = "VC_F001_mel_f0_disentangle_with_0.01"
+    weight_at = 0.01
+    saved_dir = f"exp/{exp_name}"
+    os.makedirs(saved_dir, exist_ok=True)
+    learning_rate = 1e-4
+    betas = (0.5, 0.9)
+    data_dir = 'data/F001/frame_hop_00625'
+    batch_size = 256
+    beta_dis = 1
+    beta_gen = 1
+    beta_clf = 1
+    lambda_ = 10
+    pitch_ae_iter = 2000
+    enc_pre_iter = 2000
+    dis_pre_iter = 10000
+    train_iter = 50000
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    # data
+    data_loader = load_data(data_dir, batch_size)
+
+    # model
+    pitch_ae, encoder, decoder, classifier = load_model(device)
+    pitch_ae_opt = torch.optim.Adam(pitch_ae.parameters(), lr=learning_rate, betas=betas)
+    enc_opt = torch.optim.Adam(encoder.parameters(), lr=learning_rate, betas=betas)
+    dec_opt = torch.optim.Adam(decoder.parameters(), lr=learning_rate, betas=betas)
+    clf_opt = torch.optim.Adam(classifier.parameters(), lr=learning_rate, betas=betas)
+
+    '''Step0. Pretrain PitchAE '''
+    for iteration in range(pitch_ae_iter):
+        x, c = next(iter(data_loader))
+        c = c.to(device)
+        c_pred = pitch_ae(c)
+        rec_loss = pitch_ae.loss_function(c, c_pred)
+
+        pitch_ae_opt.zero_grad()
+        rec_loss.backward()
+        pitch_ae_opt.step()
+        if iteration % 100 ==0:
+            logger.info('Iteration: [{:5d}/{:5d}] | \
+                  rec_loss = {:.4f}'.format(iteration, pitch_ae_iter, rec_loss))
+    torch.save(pitch_ae.state_dict(), f'{saved_dir}/pitch_ae.pkl')
+
+    # Plot lf0
+    c_pred = pitch_ae(c)
+    plt.figure(figsize=(20, 8))
+    plt.plot(c[0].squeeze(0).detach().cpu().numpy(), label='src')
+    plt.plot(c_pred[0].squeeze(0).detach().cpu().numpy(), label='src_pred')
+    plt.legend()
+    plt.savefig(f'exp/{exp_name}/{iteration}_pred_f0.png')
+
+
+    ''' Step1. Pretrain G (Encoder & Decoder)'''
+    for iteration in range(enc_pre_iter):
+        x, c = next(iter(data_loader))
+        x = x.to(device)
+        c = c.to(device)
+        emb = pitch_ae.get_f0_emb(c)
+        z = encoder(x)
+        y = decoder(z, emb)
+        rec_loss = F.mse_loss(x, y)
+        # backpropogation
+        enc_opt.zero_grad()
+        dec_opt.zero_grad()
+        rec_loss.backward()
+        enc_opt.step()
+        dec_opt.step()
+        if iteration % 100 == 0:
+            logger.info("Pretrain G|  [{:5d}/{}] | rec_loss = {:.4f} \
+            ".format(iteration, enc_pre_iter, rec_loss))
+        if iteration % 1000 == 0:
+            torch.save(encoder.state_dict(), f'{saved_dir}/encoder_before.pkl')
+            torch.save(decoder.state_dict(), f'{saved_dir}/decoder_before.pkl')
+
+            # Plot mel
+            plt.figure(figsize=(10, 8))
+            plt.subplot(121)
+            plt.imshow(x[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
+            plt.subplot(122)
+            plt.imshow(y[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
+            plt.savefig(f'exp/{exp_name}/before_{iteration}_pred_mel.png')
+
+
+    ''' Step2. Pretrain D (Discriminator)'''
+    for iteration in range(dis_pre_iter):
+        x, c = next(iter(data_loader))
+        x = x.to(device)
+        c = c.to(device)
+        emb = pitch_ae.get_f0_emb(c)
+        _, idx = torch.max(emb, dim=1)
+        z = encoder(x)
+        p = classifier(z)
+        clf_loss = nn.CrossEntropyLoss()(p, idx)
+        acc = cal_acc(p, idx)
+
+        # backpropogation
+        clf_opt.zero_grad()
+        clf_loss.backward()
+        clf_opt.step()
+        if iteration % 100 == 0:
+            logger.info("Pretrain D| [{:5d}/{}] | clf_loss = {:.4f}, \
+                    acc = {:.4f}".format(iteration, dis_pre_iter, clf_loss, acc))
+    torch.save(classifier.state_dict(), f'{saved_dir}/classifier_before.pkl')
+
+
+    ''' Step3. Adversarial Training G & D  '''
+    for iteration in range(train_iter):
+        if iteration < 50000:
+            a = weight_at * (iteration/50000)
+        else:
+            a = weight_at
+        # train D
+        for i in range(5):
+            x, c = next(iter(data_loader))
+            x = x.to(device)
+            c = c.to(device)
+            emb = pitch_ae.get_f0_emb(c)
+            _, idx = torch.max(emb, dim=1)
+            z = encoder(x)
+            p = classifier(z)
+            clf_loss = nn.CrossEntropyLoss()(p, idx)
+            acc = cal_acc(p, idx)
+            clf_opt.zero_grad()
+            clf_loss.backward()
+            grad_clip([classifier], 5)
+            clf_opt.step()
+            logger.info('Train D | [{:5d}/{}] | clf_loss = {:.4f} \
+                    acc = {:.4f}'.format(iteration, train_iter, clf_loss, acc))
+
+        # train G
+        x, c = next(iter(data_loader))
+        x = x.to(device)
+        c = c.to(device)
+        emb = pitch_ae.get_f0_emb(c)
+        _, idx = torch.max(emb, dim=1)
+        z = encoder(x)
+        p = classifier(z)
+        y = decoder(z, emb)
+        rec_loss = F.mse_loss(x, y)
+        clf_loss = nn.CrossEntropyLoss()(p, idx)
+        loss = rec_loss - a * clf_loss
+        acc = cal_acc(p, idx)
+
+        enc_opt.zero_grad()
+        dec_opt.zero_grad()
+        loss.backward()
+        grad_clip([encoder, decoder], 5)
+        enc_opt.step()
+        dec_opt.step()
+        logger.info('Train G | [{:5d}/{}] | rec_loss = {:.4f} clf_loss = {:.4f} a = {:.2e} \
+               acc = {:.4f}'.format(iteration, train_iter, rec_loss, clf_loss, a, acc))
+
+        if iteration % 9999 == 0:
+            torch.save(encoder.state_dict(), f'{saved_dir}/encoder_after.pkl')
+            torch.save(decoder.state_dict(), f'{saved_dir}/decoder_after.pkl')
+            torch.save(classifier.state_dict(), f'{saved_dir}/classifier_after.pkl')
+            # Plot mel
+            plt.figure(figsize=(10, 8))
+            plt.subplot(121)
+            plt.imshow(x[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
+            plt.subplot(122)
+            plt.imshow(y[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
+            plt.savefig(f'exp/{exp_name}/after_{iteration}_pred_mel.png')
+
+
+
+
+if __name__ == '__main__':
+    args = argparse.ArgumentParser(description='PyTorch Template')
+    args.add_argument('-c', '--config', default=None, type=str,
+                      help='config file path (default: None)')
+    args.add_argument('-r', '--resume', default=None, type=str,
+                      help='path to latest checkpoint (default: None)')
+    args.add_argument('-d', '--device', default=None, type=str,
+                      help='indices of GPUs to enable (default: all)')
+
+    # custom cli options to modify configuration from default values given in json file.
+    CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
+    options = [
+        CustomArgs(['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),
+        CustomArgs(['--bs', '--batch_size'], type=int, target='data_loader;args;batch_size')
+    ]
+    config = ConfigParser.from_args(args, options)
+    main(config)
+    
