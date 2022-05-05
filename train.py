@@ -46,7 +46,7 @@ def main():
     beta_clf = 1
     lambda_ = 10
     pitch_ae_iter = 2000
-    enc_pre_iter = 2000
+    enc_pre_iter = 10000
     dis_pre_iter = 10000
     train_iter = 50000
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -140,8 +140,8 @@ def main():
 
     ''' Step3. Adversarial Training G & D  '''
     for iteration in range(train_iter):
-        if iteration < 50000:
-            a = weight_at * (iteration/50000)
+        if iteration < 20000:
+            a = weight_at * (iteration/20000)
         else:
             a = weight_at
         # train D
