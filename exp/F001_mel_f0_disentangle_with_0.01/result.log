@@ -1,0 +1,10 @@
+[2022-05-05 02:53:25,627][train.py][line:76][INFO] Iteration: [    0/ 2000] |                   rec_loss = 0.4591
+[2022-05-05 02:53:46,119][train.py][line:76][INFO] Iteration: [  100/ 2000] |                   rec_loss = 0.0808
+[2022-05-05 02:54:06,535][train.py][line:76][INFO] Iteration: [  200/ 2000] |                   rec_loss = 0.0424
+[2022-05-05 02:54:26,999][train.py][line:76][INFO] Iteration: [  300/ 2000] |                   rec_loss = 0.0241
+[2022-05-05 02:54:47,446][train.py][line:76][INFO] Iteration: [  400/ 2000] |                   rec_loss = 0.0141
+[2022-05-05 02:55:07,918][train.py][line:76][INFO] Iteration: [  500/ 2000] |                   rec_loss = 0.0095
+[2022-05-05 02:55:28,391][train.py][line:76][INFO] Iteration: [  600/ 2000] |                   rec_loss = 0.0080
+[2022-05-05 02:55:48,858][train.py][line:76][INFO] Iteration: [  700/ 2000] |                   rec_loss = 0.0117
+[2022-05-05 02:56:09,298][train.py][line:76][INFO] Iteration: [  800/ 2000] |                   rec_loss = 0.0050
+[2022-05-05 02:56:29,732][train.py][line:76][INFO] Iteration: [  900/ 2000] |                   rec_loss = 0.0049

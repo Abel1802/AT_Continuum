@@ -4,7 +4,6 @@ from pathlib import Path
 from hydra import utils
 import argparse
 import collections
-from parse_config import ConfigParser
 from tqdm import tqdm
 import matplotlib.pyplot as plt 
 import torch
@@ -13,9 +12,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from model import Encoder, Decoder, PitchClassifier, PitchAE
-from data_utils import ContinuumDateset
-from torch.utils.data import DataLoader
-from utils import cal_acc, grad_clip, calculate_gradients_penalty
+from data_loader import ContinuumDateset
+from utils import get_logger, cal_acc, grad_clip
 
 
 def load_data(data_dir, batch_size):
@@ -32,13 +30,13 @@ def load_model(device):
     return pitch_ae, encoder, decoder, classifier
 
 
-def main(config):
-    logger = config.get_logger('train')
+def main():
     # Hyper-parameters
     exp_name = "F001_mel_f0_disentangle_with_0.01"
     weight_at = 0.01
     saved_dir = f"exp/{exp_name}"
     os.makedirs(saved_dir, exist_ok=True)
+    logger = get_logger(f"{saved_dir}/result.log")
     learning_rate = 1e-4
     betas = (0.5, 0.9)
     data_dir = '/disk2/lz/workspace/data_new/F001'
@@ -211,12 +209,5 @@ if __name__ == '__main__':
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
 
-    # custom cli options to modify configuration from default values given in json file.
-    CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
-    options = [
-        CustomArgs(['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),
-        CustomArgs(['--bs', '--batch_size'], type=int, target='data_loader;args;batch_size')
-    ]
-    config = ConfigParser.from_args(args, options)
-    main(config)
+    main()
     
