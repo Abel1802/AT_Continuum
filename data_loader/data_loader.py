@@ -33,17 +33,6 @@ class ContinuumDateset(Dataset):
         while mel.shape[-1] <= self.n_frames:
             mel = np.concatenate([mel, melt], -1)
             f0 = np.concatenate([f0, f0t], 0)
-        zero_idxs = np.where(f0 == 0.0)[0]
-        nonzero_idxs = np.where(f0 != 0.0)[0]
-        if len(nonzero_idxs) > 0 :
-            mean = np.mean(f0[nonzero_idxs])
-            std = np.std(f0[nonzero_idxs])
-            if std == 0:
-                f0 -= mean
-                f0[zero_idxs] = 0.0
-            else:
-                f0 = (f0 - mean) / (std + 1e-8)
-                f0[zero_idxs] = 0.0
         # print(mel.shape)
         pos = np.random.randint(0, mel.shape[-1] - self.n_frames)
         mel = mel[:, pos:pos+self.n_frames]
