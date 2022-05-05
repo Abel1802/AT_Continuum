@@ -19,7 +19,7 @@ from utils import cal_acc, grad_clip, calculate_gradients_penalty
 
 
 def load_data(data_dir, batch_size):
-    data_set = ContinuumDateset(f"{data_dir}/mel", f"{data_dir}/f0")
+    data_set = ContinuumDateset(f"{data_dir}/mels", f"{data_dir}/f0")
     data_loader = DataLoader(dataset=data_set, batch_size=batch_size, shuffle=True)
     return data_loader
 
@@ -35,13 +35,13 @@ def load_model(device):
 def main(config):
     logger = config.get_logger('train')
     # Hyper-parameters
-    exp_name = "VC_F001_mel_f0_disentangle_with_0.01"
+    exp_name = "F001_mel_f0_disentangle_with_0.01"
     weight_at = 0.01
     saved_dir = f"exp/{exp_name}"
     os.makedirs(saved_dir, exist_ok=True)
     learning_rate = 1e-4
     betas = (0.5, 0.9)
-    data_dir = 'data/F001/frame_hop_00625'
+    data_dir = '/disk2/lz/workspace/data_new/F001'
     batch_size = 256
     beta_dis = 1
     beta_gen = 1
@@ -188,9 +188,9 @@ def main(config):
                acc = {:.4f}'.format(iteration, train_iter, rec_loss, clf_loss, a, acc))
 
         if iteration % 9999 == 0:
-            torch.save(encoder.state_dict(), f'{saved_dir}/encoder_after.pkl')
-            torch.save(decoder.state_dict(), f'{saved_dir}/decoder_after.pkl')
-            torch.save(classifier.state_dict(), f'{saved_dir}/classifier_after.pkl')
+            torch.save(encoder.state_dict(), f'{saved_dir}/encoder_after_{iteration}.pkl')
+            torch.save(decoder.state_dict(), f'{saved_dir}/decoder_after_{iteration}.pkl')
+            torch.save(classifier.state_dict(), f'{saved_dir}/classifier_after_{iteration}.pkl')
             # Plot mel
             plt.figure(figsize=(10, 8))
             plt.subplot(121)
