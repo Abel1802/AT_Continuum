@@ -32,8 +32,8 @@ def load_model(device):
 
 def main():
     # Hyper-parameters
-    exp_name = "F001_mel_f0_disentangle_with_0.01"
-    weight_at = 0.01
+    weight_at = 0.05
+    exp_name = f"F001_mel_f0_disentangle_with_{weight_at}"
     saved_dir = f"exp/{exp_name}"
     os.makedirs(saved_dir, exist_ok=True)
     logger = get_logger(f"{saved_dir}/result.log")
@@ -50,6 +50,8 @@ def main():
     dis_pre_iter = 10000
     train_iter = 50000
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    
+    logger.info(f"exp: {exp_name}, start training on {device}...")
 
     # data
     data_loader = load_data(data_dir, batch_size)
