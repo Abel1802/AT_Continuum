@@ -34,22 +34,21 @@ def main():
     # Hyper-parameters
     weight_at = 0.05
     exp_name = f"F001_mel_f0_disentangle_with_{weight_at}"
-    saved_dir = f"exp/{exp_name}"
+    saved_dir = f"exp/{exp_name}/checkpoint/"
     os.makedirs(saved_dir, exist_ok=True)
     logger = get_logger(f"{saved_dir}/result.log")
     learning_rate = 1e-4
     betas = (0.5, 0.9)
     data_dir = '/disk2/lz/workspace/data_new/F001'
-    batch_size = 256
+    batch_size = 16
     beta_dis = 1
     beta_gen = 1
     beta_clf = 1
-    lambda_ = 10
     pitch_ae_iter = 2000
     enc_pre_iter = 10000
     dis_pre_iter = 10000
     train_iter = 50000
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     
     logger.info(f"exp: {exp_name}, start training on {device}...")
 
@@ -105,18 +104,8 @@ def main():
         if iteration % 100 == 0:
             logger.info("Pretrain G|  [{:5d}/{}] | rec_loss = {:.4f} \
             ".format(iteration, enc_pre_iter, rec_loss))
-        if iteration % 1000 == 0:
-            torch.save(encoder.state_dict(), f'{saved_dir}/encoder_before.pkl')
-            torch.save(decoder.state_dict(), f'{saved_dir}/decoder_before.pkl')
-
-            # Plot mel
-            plt.figure(figsize=(10, 8))
-            plt.subplot(121)
-            plt.imshow(x[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
-            plt.subplot(122)
-            plt.imshow(y[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
-            plt.savefig(f'exp/{exp_name}/before_{iteration}_pred_mel.png')
-
+    torch.save(encoder.state_dict(), f'{saved_dir}/encoder_before.pkl')
+    torch.save(decoder.state_dict(), f'{saved_dir}/decoder_before.pkl')
 
     ''' Step2. Pretrain D (Discriminator)'''
     for iteration in range(dis_pre_iter):
@@ -187,7 +176,7 @@ def main():
         logger.info('Train G | [{:5d}/{}] | rec_loss = {:.4f} clf_loss = {:.4f} a = {:.2e} \
                acc = {:.4f}'.format(iteration, train_iter, rec_loss, clf_loss, a, acc))
 
-        if iteration % 9999 == 0:
+        if iteration % 10000 == 0 and iteration !=0:
             torch.save(encoder.state_dict(), f'{saved_dir}/encoder_after_{iteration}.pkl')
             torch.save(decoder.state_dict(), f'{saved_dir}/decoder_after_{iteration}.pkl')
             torch.save(classifier.state_dict(), f'{saved_dir}/classifier_after_{iteration}.pkl')
@@ -198,8 +187,6 @@ def main():
             plt.subplot(122)
             plt.imshow(y[0].squeeze(0).detach().cpu().numpy(), origin='lower', aspect='auto')
             plt.savefig(f'exp/{exp_name}/after_{iteration}_pred_mel.png')
-
-
 
 
 if __name__ == '__main__':

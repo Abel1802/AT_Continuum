@@ -2,13 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 import os
-import time
-from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor
-from functools import partial
-from multiprocessing import cpu_count
-import parselmouth
-from parselmouth.praat import call
+
 
 class ContinuumDateset(Dataset):
     '''A Dataset contain f0 and spectrogram.
@@ -18,7 +12,7 @@ class ContinuumDateset(Dataset):
             spec_dir, the path which contain lin-spec npy-file.
     '''
     def __init__(self, spec_dir, f0_dir):
-        self.n_frames = 64
+        self.n_frames = 32
         self.f0_dir = f0_dir
         self.spec_dir = spec_dir
         self.f0_lst = os.listdir(f0_dir)
@@ -33,7 +27,6 @@ class ContinuumDateset(Dataset):
         while mel.shape[-1] <= self.n_frames:
             mel = np.concatenate([mel, melt], -1)
             f0 = np.concatenate([f0, f0t], 0)
-        # print(mel.shape)
         pos = np.random.randint(0, mel.shape[-1] - self.n_frames)
         mel = mel[:, pos:pos+self.n_frames]
         f0 = f0[pos:pos+self.n_frames]

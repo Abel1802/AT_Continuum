@@ -367,6 +367,7 @@ class Decoder(nn.Module):
         out = linear(out, self.linear)
         return out
 
+
 class Encoder(nn.Module):
     def __init__(self, c_in=80, c_h1=128, c_h2=512, c_h3=128, ns=0.2, dp=0.5):
         super(Encoder, self).__init__()

@@ -1,10 +1,11 @@
 import torch
 import numpy as np
 import librosa
+import resampy
 import os
 import soundfile as sf
 import pyworld as pw
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import kaldiio
 import subprocess
 
@@ -12,19 +13,64 @@ from model import PitchAE
 from model import Encoder
 from model import Decoder
 from spectrogram import logmelspectrogram
-from preprocess.tacotron.norm_utils import get_spectrograms
-from preprocess.tacotron.norm_utils import get_f0
+
+
+def extract_logmel(wav_path, mean, std, sr=16000):
+    # wav, fs = librosa.load(wav_path, sr=sr)
+    wav, fs = sf.read(wav_path)
+    wav, _ = librosa.effects.trim(wav, top_db=60)
+    if fs != sr:
+        wav = resampy.resample(wav, fs, sr, axis=0)
+        fs = sr
+    # duration = len(wav)/fs
+    assert fs == 16000
+    peak = np.abs(wav).max()
+    if peak > 1.0:
+        wav /= peak
+    mel = logmelspectrogram(
+                x=wav,
+                fs=fs,
+                n_mels=80,
+                n_fft=400,
+                n_shift=160,
+                win_length=400,
+                window='hann',
+                fmin=80,
+                fmax=7600,
+            )
+    mel = (mel - mean) / (std + 1e-8)
+    tlen = mel.shape[0]
+    frame_period = 160 / fs * 1000
+    f0, timeaxis = pw.dio(wav.astype("float64"), fs, frame_period=frame_period)
+    f0 = pw.stonemask(wav.astype("float64"), f0, timeaxis, fs)
+    f0 = f0[:tlen].reshape(-1).astype("float32")
+    nonzeros_indices = np.nonzero(f0)
+    lf0 = f0.copy()
+    lf0[nonzeros_indices] = np.log(
+        f0[nonzeros_indices]
+    )  # for f0(Hz), lf0 > 0 when f0 != 0
+    mean, std = np.mean(lf0[nonzeros_indices]), np.std(lf0[nonzeros_indices])
+    lf0[nonzeros_indices] = (lf0[nonzeros_indices] - mean) / (std + 1e-8)
+    return mel, f0/600
 
 
 def main():
-    exp_name = 'VC_F001_mel_f0_disentangle_with_0.01'
+    resume_iter = 30000
+    exp_name = 'F001_mel_f0_disentangle_with_0.05'
     device = torch.device('cuda:0')
+    out_dir = f"exp/{exp_name}/converted/"
+    os.makedirs(out_dir, exist_ok=True)
+    mel_stats = np.load("/disk2/lz/workspace/data_new/F001/mel_stats.npy")
+    mel_mean, mel_std = mel_stats[0], mel_stats[1]
+
+    # test_data
+    # feat_writer = kaldiio.WriteHelper(
+            # "ark,scp:{o}.ark,{o}.scp".format(o=str(out_dir) + "/feats.1))
 
     # Prepare test data
-    src_wav_path = "../bei1.wav"
-    ref_wav_path = "../bei4_fix.wav"
-    out_dir = "converted"
-    os.makedirs(out_dir, exist_ok=True)
+    src_wav_path = "../data_new/test_wavs/bei1.wav"
+    ref_wav_path = "../data_new/test_wavs/bei4_fix.wav"
+    out_filename = os.path.basename(src_wav_path).split(".")[0]
 
     # Load saved model
     pitch_ae = PitchAE().to(device)
@@ -33,11 +79,11 @@ def main():
     encoder_after = Encoder().to(device)
     decoder_after = Decoder().to(device)
 
-    pitch_ae.load_state_dict(torch.load(f"exp/{exp_name}/pitch_ae.pkl"))
-    encoder_before.load_state_dict(torch.load(f"exp/{exp_name}/encoder_before.pkl"))
-    decoder_before.load_state_dict(torch.load(f"exp/{exp_name}/decoder_before.pkl"))
-    encoder_after.load_state_dict(torch.load(f"exp/{exp_name}/encoder_after.pkl"))
-    decoder_after.load_state_dict(torch.load(f"exp/{exp_name}/decoder_after.pkl"))
+    pitch_ae.load_state_dict(torch.load(f"exp/{exp_name}/checkpoint/pitch_ae.pkl"))
+    encoder_before.load_state_dict(torch.load(f"exp/{exp_name}/checkpoint/encoder_before.pkl"))
+    decoder_before.load_state_dict(torch.load(f"exp/{exp_name}/checkpoint/decoder_before.pkl"))
+    encoder_after.load_state_dict(torch.load(f"exp/{exp_name}/checkpoint/encoder_after_{resume_iter}.pkl"))
+    decoder_after.load_state_dict(torch.load(f"exp/{exp_name}/checkpoint/decoder_after_{resume_iter}.pkl"))
 
     pitch_ae.eval()
     encoder_before.eval()
@@ -46,10 +92,8 @@ def main():
     decoder_after.eval()
 
     # Run inference
-    src_mel, _ = get_spectrograms(src_wav_path)
-    ref_mel, _ = get_spectrograms(ref_wav_path)
-    src_lf0 = get_f0(src_wav_path)
-    ref_lf0 = get_f0(ref_wav_path)
+    src_mel, src_lf0 = extract_logmel(src_wav_path, mel_mean, mel_std)
+    ref_mel, ref_lf0 = extract_logmel(ref_wav_path, mel_mean, mel_std)
     src_mel = torch.FloatTensor(src_mel.T).unsqueeze(0).to(device)
     src_lf0 = torch.FloatTensor(src_lf0).unsqueeze(0).to(device)
     ref_lf0 = torch.FloatTensor(ref_lf0).unsqueeze(0).to(device)
@@ -114,8 +158,10 @@ def main():
         plt.plot(lf02_pred.squeeze(0).cpu().numpy(), label='ref_pred')
         plt.legend()
         plt.savefig(f'exp/{exp_name}/bei_{exp_name}_lf0.png')
-
         
+
+
+
 
 
 
