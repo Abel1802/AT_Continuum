@@ -13,6 +13,7 @@ from model import PitchAE
 from model import Encoder
 from model import Decoder
 from spectrogram import logmelspectrogram
+from utils import get_formant
 
 
 def extract_logmel(wav_path, mean, std, sr=16000):
@@ -55,8 +56,9 @@ def extract_logmel(wav_path, mean, std, sr=16000):
 
 
 def main():
-    resume_iter = 30000
-    exp_name = 'F001_mel_f0_disentangle_with_0.05'
+    formant = False
+    resume_iter = 20000
+    exp_name = 'F001_mel_f0_disentangle_with_0.01'
     device = torch.device('cuda:0')
     out_dir = f"exp/{exp_name}/converted/"
     os.makedirs(out_dir, exist_ok=True)
@@ -66,6 +68,10 @@ def main():
     # test_data
     # feat_writer = kaldiio.WriteHelper(
             # "ark,scp:{o}.ark,{o}.scp".format(o=str(out_dir) + "/feats.1))
+
+    feat_writer = kaldiio.WriteHelper(
+            "ark,scp:{o}.ark,{o}.scp".format(o=str(out_dir) + "/feats.1")
+        )
 
     # Prepare test data
     src_wav_path = "../data_new/test_wavs/bei1.wav"
@@ -94,6 +100,13 @@ def main():
     # Run inference
     src_mel, src_lf0 = extract_logmel(src_wav_path, mel_mean, mel_std)
     ref_mel, ref_lf0 = extract_logmel(ref_wav_path, mel_mean, mel_std)
+    # get formant
+    if formant:
+        src_lf0 = get_formant(src_wav_path, src_lf0, formant_num=2)
+        src_lf0 = np.array(src_lf0) / 5500
+        ref_lf0 = get_formant(ref_wav_path, ref_lf0, formant_num=2)
+        ref_lf0 = np.array(ref_lf0) / 5500
+
     src_mel = torch.FloatTensor(src_mel.T).unsqueeze(0).to(device)
     src_lf0 = torch.FloatTensor(src_lf0).unsqueeze(0).to(device)
     ref_lf0 = torch.FloatTensor(ref_lf0).unsqueeze(0).to(device)
@@ -127,12 +140,31 @@ def main():
         plt.imshow(ref_mel.squeeze(0).cpu().numpy(), origin='lower', aspect='auto')
         plt.savefig(f'exp/{exp_name}/before_bei_{exp_name}.png')
 
+        feat_writer[out_filename + "_converted_before"] = output1_2.squeeze(0).cpu().numpy().T
+        feat_writer[out_filename + "_source"] = src_mel.squeeze(0).cpu().numpy().T
+        feat_writer[out_filename + "_reference"] = ref_mel.squeeze(0).cpu().numpy().T
+
         z1_after = encoder_after(src_mel)
         z2_after = encoder_after(ref_mel)
         output1_after = decoder_after(z1_after, lf01_embs)
         output1_2_after = decoder_after(z1_after, lf02_embs)
         output2_1_after = decoder_after(z2_after, lf01_embs)
         output2_after = decoder_after(z2_after, lf02_embs)
+
+        # Continuum
+        b_ints = np.linspace(0, 1, 10)
+        lf0_ints = [lf01_embs * (1-b) + lf02_embs * b for b in b_ints]
+        mel_ints = [decoder_after(z1_after, lf0_int) for lf0_int in lf0_ints]
+        for i in range(10):
+            feat_writer[out_filename + f"_{resume_iter}_continuum_{i}"] = mel_ints[i].squeeze(0).cpu().numpy().T
+
+        diff = (src_lf0 - ref_lf0) / 6
+        b_ints = np.linspace(2, -8, 11)
+        lf0_ints = [lf01_embs + diff * b for b in b_ints]
+        mel_ints = [decoder_after(z1_after, lf0_int) for lf0_int in lf0_ints]
+        for i in range(11):
+            feat_writer[out_filename + f"std_continuum_{i}"] = mel_ints[i].squeeze(0).cpu().numpy().T
+
 
         # Plot mel
         plt.figure(figsize=(20, 8))
@@ -150,6 +182,8 @@ def main():
         plt.imshow(ref_mel.squeeze(0).cpu().numpy(), origin='lower', aspect='auto')
         plt.savefig(f'exp/{exp_name}/after_bei_{exp_name}.png')
 
+        feat_writer[out_filename + "_converted_after"] = output1_2_after.squeeze(0).cpu().numpy().T
+
         # Plot lf0
         plt.figure(figsize=(20, 8))
         plt.plot(src_lf0.squeeze(0).cpu().numpy(), label='src')
@@ -159,6 +193,21 @@ def main():
         plt.legend()
         plt.savefig(f'exp/{exp_name}/bei_{exp_name}_lf0.png')
         
+        feat_writer.close()
+
+    # vocoder
+    print("synthesize waveform...")
+    cmd = [
+        "parallel-wavegan-decode",
+        "--checkpoint",
+        "./vocoder/checkpoint-3000000steps.pkl",
+        "--feats-scp",
+        f"{str(out_dir)}/feats.1.scp",
+        "--outdir",
+        str(out_dir),
+    ]
+    subprocess.call(cmd)
+
 
 
 

@@ -33,7 +33,7 @@ def load_model(device):
 def main():
     # Hyper-parameters
     weight_at = 0.05
-    exp_name = f"F001_mel_f0_disentangle_with_{weight_at}"
+    exp_name = f"F001_mel_f0_disentangle_with_{weight_at}_new"
     saved_dir = f"exp/{exp_name}/checkpoint/"
     os.makedirs(saved_dir, exist_ok=True)
     logger = get_logger(f"{saved_dir}/result.log")
@@ -47,8 +47,8 @@ def main():
     pitch_ae_iter = 2000
     enc_pre_iter = 10000
     dis_pre_iter = 10000
-    train_iter = 50000
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    train_iter = 50001
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     logger.info(f"exp: {exp_name}, start training on {device}...")
 
@@ -76,15 +76,6 @@ def main():
             logger.info('Iteration: [{:5d}/{:5d}] | \
                   rec_loss = {:.4f}'.format(iteration, pitch_ae_iter, rec_loss))
     torch.save(pitch_ae.state_dict(), f'{saved_dir}/pitch_ae.pkl')
-
-    # Plot lf0
-    c_pred = pitch_ae(c)
-    plt.figure(figsize=(20, 8))
-    plt.plot(c[0].squeeze(0).detach().cpu().numpy(), label='src')
-    plt.plot(c_pred[0].squeeze(0).detach().cpu().numpy(), label='src_pred')
-    plt.legend()
-    plt.savefig(f'exp/{exp_name}/{iteration}_pred_f0.png')
-
 
     ''' Step1. Pretrain G (Encoder & Decoder)'''
     for iteration in range(enc_pre_iter):

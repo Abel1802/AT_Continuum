@@ -12,7 +12,7 @@ class ContinuumDateset(Dataset):
             spec_dir, the path which contain lin-spec npy-file.
     '''
     def __init__(self, spec_dir, f0_dir):
-        self.n_frames = 32
+        self.n_frames = 64
         self.f0_dir = f0_dir
         self.spec_dir = spec_dir
         self.f0_lst = os.listdir(f0_dir)
