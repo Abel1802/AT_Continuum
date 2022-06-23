@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+import argparse
 
 from model import Encoder, Decoder, PitchClassifier, PitchAE
 from data_loader import ContinuumDateset
@@ -31,15 +32,19 @@ def load_model(device):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--data_dir', required=True, help="train data")
+    parser.add_argument('-l', '--lambda_disc', type=float, default=0.01, help='a hyper-paramenter which reconstruction loss and discrimination losss')
+    args = parser.parse_args()
+    data_dir = args.data_dir
+    lambda_disc = args.lambda_disc
     # Hyper-parameters
-    weight_at = 0.05
-    exp_name = f"F001_mel_f0_disentangle_with_{weight_at}_new"
+    exp_name = f"F001_mel_f0_disentangle_with_{lambda_disc}_new"
     saved_dir = f"exp/{exp_name}/checkpoint/"
     os.makedirs(saved_dir, exist_ok=True)
     logger = get_logger(f"{saved_dir}/result.log")
     learning_rate = 1e-4
     betas = (0.5, 0.9)
-    data_dir = '/disk2/lz/workspace/data_new/F001'
     batch_size = 16
     beta_dis = 1
     beta_gen = 1
@@ -123,9 +128,9 @@ def main():
     ''' Step3. Adversarial Training G & D  '''
     for iteration in range(train_iter):
         if iteration < 20000:
-            a = weight_at * (iteration/20000)
+            a = lambda_disc * (iteration/20000)
         else:
-            a = weight_at
+            a = lambda_disc
         # train D
         for i in range(5):
             x, c = next(iter(data_loader))
@@ -181,13 +186,5 @@ def main():
 
 
 if __name__ == '__main__':
-    args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default=None, type=str,
-                      help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default=None, type=str,
-                      help='path to latest checkpoint (default: None)')
-    args.add_argument('-d', '--device', default=None, type=str,
-                      help='indices of GPUs to enable (default: all)')
-
-    main()
+        main()
     
