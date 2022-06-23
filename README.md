@@ -1,4 +1,4 @@
-We synthesize speech continuum using adversarial-training(AT).
+We synthesize speech continuum based on adversarial-training(AT) approach.
 
 
 ## Dependancy
@@ -41,6 +41,8 @@ Our model is trained on [BLCU-SAIT Corpus](https://ieeexplore.ieee.org/abstract/
 
 ### Training
 You can start training by running python train.py. The arguments are listed below.
+- --data_dir: the dir of training data
+- --lambda_disc: the hyper-parameters
 
 ### Testing
 You can inference by running python test.py. The arguments are listed below.
