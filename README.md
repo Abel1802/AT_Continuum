@@ -11,6 +11,8 @@ We synthesize speech continuum based on adversarial-training(AT) approach.
   ```
   AT_Continuum/
   |
+  |--preprocess.py - extract features(mel,f0,F1,F2)
+  |
   |--train.py - main script to start train
   |
   |--test.py - evaluation of trained model
