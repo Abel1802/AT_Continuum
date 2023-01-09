@@ -39,6 +39,8 @@ We synthesize speech continuum based on adversarial-training(AT) approach.
 ## Preprocess
 Our model is trained on [BLCU-SAIT Corpus](https://ieeexplore.ieee.org/abstract/document/7919008)
 
+There is an example.(using F001/*.wav) - python preprocess.py
+
 ## Usage
 
 ### Training
